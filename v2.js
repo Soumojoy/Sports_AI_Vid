@@ -268,7 +268,7 @@ async function uploadVideoToS3(videoPath) {
 function cleanupTempFiles(imageFiles, tempImageDir) {
   try {
     console.log('🧹 Cleaning up temporary files...');
-    
+
     // Remove temporary renamed images
     if (fs.existsSync(tempImageDir)) {
       fs.readdirSync(tempImageDir).forEach(file => {
@@ -276,59 +276,88 @@ function cleanupTempFiles(imageFiles, tempImageDir) {
       });
       fs.rmdirSync(tempImageDir);
     }
-    
+
     console.log('🧹 Cleanup completed');
   } catch (error) {
     console.error('❌ Error during cleanup:', error);
   }
 }
 
+// API endpoint to generate a celebrity video
+app.post('/api/generate-video', async (req, res) => {
 
 
-// ✅ New simplified endpoint that accepts an `input` and runs the full pipeline
-app.post('/api/send', async (req, res) => {
-  const { input } = req.body;
 
-  if (!input) {
-    return res.status(400).json({ message: 'No input provided' });
-  }
+
+
+
+
 
   try {
-    const result = await run(input);
-    res.json({ message: `Video generated, check this link:`, videoUrl: result });
-
-  } catch (error) {
-    res.status(500).json({ message: 'Error generating video', error: error.message });
-  }
-});
-
-// Get list of videos from S3
-app.get('/api/videos', async (req, res) => {
-  try {
-    const params = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Prefix: 'videos/',
-    };
-
-    s3.listObjectsV2(params, (err, data) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error fetching videos' });
-      }
-
-      const urls = data.Contents.map(item => {
-        return `https://${params.Bucket}.s3.${AWS.config.region}.amazonaws.com/${item.Key}`;
-      });
-
-      res.json({ videos: urls });
+    const { celebrityName } = req.body;
+    
+    if (!celebrityName) {
+      return res.status(400).json({ error: 'Celebrity name is required' });
+    }
+    
+    console.log(`🚀 Starting video generation for: ${celebrityName}`);
+    const videoUrl = await run(celebrityName);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Video generated successfully',
+      videoUrl: videoUrl // URL of the video on S3
     });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error) {
+    console.error('API Error:', error);
+    return res.status(500).json({ error: 'Failed to generate video' });
   }
 });
+// run("Robert Lewandowski")
 
-// Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
 
+
+
+
+
+
+
+
+
+
+
+
+
+app.get('/api/videos', async (req, res) => {
+    try {
+      const params = {
+        Bucket: process.env.S3_BUCKET_NAME,
+        Prefix: 'videos/',
+      };
+  
+      s3.listObjectsV2(params, (err, data) => {
+        if (err) {
+          console.error('❌ Error fetching videos from S3:', err);
+          return res.status(500).json({ error: 'Failed to fetch videos' });
+        }
+  
+        const baseUrl = `https://${params.Bucket}.s3.ap-south-1.amazonaws.com/`;
+  
+        const videoUrls = data.Contents.map(item => baseUrl + item.Key);
+  
+        return res.status(200).json({
+          success: true,
+          videos: videoUrls.reverse() // newest first
+        });
+      });
+    } catch (error) {
+      console.error('❌ Error in /api/videos:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+  // Start Express server
+  const PORT = process.env.PORT || 3000; // 3000 is fallback for local dev
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+  
